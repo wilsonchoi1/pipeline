@@ -1,0 +1,62 @@
+node {
+    stage ("move-image")
+      openshift.withCluster(){
+           def localToken = readFile('/var/run/secrets/kubernetes.io/serviceaccount/token').trim()
+           def secretData = openshift.selector('secret/mysecret').object().data
+           echo "${secretData}"
+           def encodedRegistry = secretData.registry
+           echo "${encodedRegistry}"
+           def encodedToken = secretData.token
+           echo "${encodedToken}"
+           def registry = sh(script:"set +x; echo ${encodedRegistry} | base64 --decode", returnStdout: true)
+           def token = sh(script:"set +x; echo ${encodedToken} | base64 --decode", returnStdout: true)
+           echo "${registry}"
+            echo "${localToken}"
+            echo "${token}"
+            
+            openshift.withProject("${STAGE2}") {
+              def bc = openshift.selector('bc', '${APP_NAME}').object();
+              def gitUrl = bc.spec.source.git.uri
+              echo "git url: ${gitUrl}"
+              def gitSecretName = bc.spec.source.sourceSecret.name
+              echo "gitSecretName: ${gitSecretName}"
+              def gitSecretData = openshift.selector('secrets', "${gitSecretName}").object().data
+              def encodedGitKey = gitSecretData."ssh-privatekey"
+              def gitKey = sh(script:"set +x; echo ${encodedGitKey} | base64 --decode", returnStdout: true)
+              echo "git key: ${gitKey}"
+              def imageRegistry = openshift.selector( 'is', "${APP_NAME}").object().status.dockerImageRepository
+              echo "Promoting ${imageRegistry} -> ${registry}/${STAGE3}/${APP_NAME}"
+              sh """
+              set +x
+              skopeo copy --remove-signatures \
+                --src-creds openshift:${localToken} --src-cert-dir=/run/secrets/kubernetes.io/serviceaccount/ \
+                --dest-creds admin:G9CfxYIvRSn221MprH7hx2pJW4hbm0Tm3Py3BryT58M  --dest-tls-verify=false --src-tls-verify=false \
+                docker://${imageRegistry} docker://${registry}/${STAGE3}/${APP_NAME}:latest
+              """
+            }
+      }
+      /*echo '*** Build Starting ***'
+      sh 'oc login -p password -u admin --insecure-skip-tls-verify=true https://ocp39master-ext.hklab.redhat.com:8443'
+      sh 'set srccreds=`oc whoami`:`oc whoami -t`'
+      sh 'oc login -p password -u admin --insecure-skip-tls-verify=true https://ocp39master-ext.hklab.redhat.com:8443'
+      sh  'set destcreds=`oc whoami`:`oc whoami -t`'
+      sh 'oc project project2'
+      //sh 'oc new-app --docker-image=docker-registry-default.cloudapps1.hklab.redhat.com/project1/php-test --allow-missing-images'
+      sh 'oc import-image php-test:latest --from=docker-registry-default.cloudapps1.hklab.redhat.com/project1/php-test:latest --confirm'
+      sh 'skopeo --tls-verify=false copy --dest-creds `oc whoami`:`oc whoami -t` --src-creds `oc whoami`:`oc whoami -t` docker://docker-registry.default.svc:5000/project1/php-test:latest docker://docker-registry-default.cloudapps1.hklab.redhat.com/project2/php-test:latest'
+      echo '*** Build Complete ***'*/
+    /*stage ("Build")
+          echo '*** Build Starting ***'
+          openshiftBuild bldCfg: 'dotnet-example', buildName: '', checkForTriggeredDeployments: 'false', commitID: '', namespace: '', showBuildLogs: 'true', verbose: 'true'
+          openshiftVerifyBuild bldCfg: 'dotnet-example', checkForTriggeredDeployments: 'false', namespace: '', verbose: 'false'
+          echo '*** Build Complete ***'
+    stage ("Deploy and Verify in Development Env")
+          echo '*** Deployment Starting ***'
+          openshiftDeploy depCfg: 'dotnet-example', namespace: '', verbose: 'false', waitTime: ''
+          openshiftVerifyDeployment authToken: '', depCfg: 'dotnet-example', namespace: '', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: ''
+          echo '*** Deployment Complete ***'
+     stage ("Deploy SIT")
+          echo '*** Deployment Starting ***'
+          input 'Promote the Dev image to SIT?'
+          openshiftTag srcStream: 'dotnet-example', srcTag: 'latest', destStream: 'dotnet-example', destTag: 'live', namespace: '', destinationNamespace: ''*/
+     }
